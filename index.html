@@ -1,0 +1,492 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Move, RotateCw, RefreshCw, Eye, EyeOff, Info, ArrowLeftRight, Maximize } from 'lucide-react';
+
+const ProtractorApp = () => {
+  // 狀態管理
+  const [targetAngle, setTargetAngle] = useState(225); // 預設改為優角範例
+  const [protractorPos, setProtractorPos] = useState({ x: 300, y: 380 });
+  const [protractorRotation, setProtractorRotation] = useState(0); 
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [angleDirection, setAngleDirection] = useState('right'); // 'right' or 'left'
+
+  const svgRef = useRef(null);
+  
+  // 量角器設定
+  const PROTRACTOR_RADIUS = 220; // 放大半徑
+
+  // 產生隨機角度 (包含優角)
+  const randomizeAngle = () => {
+    // 30% 機率出優角 (180-350)，70% 機率出劣角 (10-180)
+    const isReflex = Math.random() > 0.7;
+    let random;
+    if (isReflex) {
+      random = Math.floor(Math.random() * 160) + 190; // 190-350
+    } else {
+      random = Math.floor(Math.random() * 170) + 10; // 10-180
+    }
+    
+    setTargetAngle(random);
+    setShowAnswer(false);
+    setAngleDirection(Math.random() > 0.5 ? 'right' : 'left');
+  };
+
+  // 處理拖曳
+  const handleMouseDown = (e) => {
+    if (e.button !== 0) return;
+    startDrag(e.clientX, e.clientY);
+  };
+  const handleTouchStart = (e) => {
+    const touch = e.touches[0];
+    startDrag(touch.clientX, touch.clientY);
+  };
+  const startDrag = (clientX, clientY) => {
+    setIsDragging(true);
+    setDragOffset({
+      x: clientX - protractorPos.x,
+      y: clientY - protractorPos.y
+    });
+  };
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    moveProtractor(e.clientX, e.clientY);
+  };
+  const handleTouchMove = (e) => {
+    if (!isDragging) return;
+    const touch = e.touches[0];
+    moveProtractor(touch.clientX, touch.clientY);
+  };
+  const moveProtractor = (clientX, clientY) => {
+    const newX = clientX - dragOffset.x;
+    const newY = clientY - dragOffset.y;
+    setProtractorPos({ x: newX, y: newY });
+  };
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('touchmove', handleTouchMove);
+      window.addEventListener('touchend', handleMouseUp);
+    } else {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleMouseUp);
+    };
+  }, [isDragging]);
+
+  const resetProtractor = () => {
+    setProtractorPos({ x: 300, y: 380 });
+    setProtractorRotation(0);
+  };
+
+  // 繪製角度的線條
+  const renderAngleLines = () => {
+    const centerX = 300;
+    const centerY = 250;
+    const solidLength = 180; // 實線長度 (點 A B 的位置)
+    const extendLength = 350; // 延長線總長度 (方便讀數)
+    
+    const rad = (targetAngle * Math.PI) / 180;
+    const dirMult = angleDirection === 'right' ? 1 : -1;
+
+    // 計算基線終點
+    const baseSolidEndX = centerX + solidLength * dirMult;
+    const baseExtendEndX = centerX + extendLength * dirMult;
+    const baseY = centerY;
+    
+    // 計算角度線終點
+    const angleSolidEndX = centerX + solidLength * Math.cos(-rad) * dirMult;
+    const angleSolidEndY = centerY + solidLength * Math.sin(-rad); 
+    const angleExtendEndX = centerX + extendLength * Math.cos(-rad) * dirMult;
+    const angleExtendEndY = centerY + extendLength * Math.sin(-rad);
+
+    // 弧線計算
+    const arcRadius = 60;
+    const arcStartX = centerX + arcRadius * dirMult;
+    const arcStartY = centerY;
+    const arcEndX = centerX + arcRadius * Math.cos(-rad) * dirMult;
+    const arcEndY = centerY + arcRadius * Math.sin(-rad);
+    
+    const largeArcFlag = targetAngle > 180 ? 1 : 0;
+    const sweepFlag = angleDirection === 'right' ? 0 : 1;
+
+    // 優角輔助弧線
+    const renderReflexHint = () => {
+      if (targetAngle <= 180) return null;
+      return (
+         <path
+          d={`M ${arcStartX} ${arcStartY} A ${arcRadius - 10} ${arcRadius - 10} 0 ${1 - largeArcFlag} ${1 - sweepFlag} ${arcEndX} ${arcEndY}`}
+          fill="none"
+          stroke="#cbd5e1"
+          strokeWidth="2"
+          strokeDasharray="4 4"
+        />
+      );
+    };
+
+    return (
+      <g>
+        {/* 延長線 (虛線，位於底層) */}
+        <line x1={centerX} y1={baseY} x2={baseExtendEndX} y2={baseY} stroke="#94a3b8" strokeWidth="2" strokeDasharray="8 4" />
+        <line x1={centerX} y1={centerY} x2={angleExtendEndX} y2={angleExtendEndY} stroke="#94a3b8" strokeWidth="2" strokeDasharray="8 4" />
+
+        {/* 實體角度線 (藍色) */}
+        <g stroke="blue" strokeWidth="5" strokeLinecap="round">
+          <line x1={centerX} y1={centerY} x2={baseSolidEndX} y2={baseY} />
+          <line x1={centerX} y1={centerY} x2={angleSolidEndX} y2={angleSolidEndY} />
+        </g>
+        
+        {/* 頂點 O */}
+        <circle cx={centerX} cy={centerY} r="6" fill="red" />
+        <text x={centerX} y={centerY + 35} fill="red" fontSize="20" fontWeight="normal" textAnchor="middle">O</text>
+
+        {/* 點 A (基線) */}
+        <circle cx={baseSolidEndX} cy={baseY} r="5" fill="blue" />
+        <text x={baseSolidEndX} y={baseY + 35} fill="blue" fontSize="20" fontWeight="normal" textAnchor="middle">A</text>
+
+        {/* 點 B (角線) */}
+        <circle cx={angleSolidEndX} cy={angleSolidEndY} r="5" fill="blue" />
+        <text x={angleSolidEndX + (angleDirection === 'right'? 20 : -20)} y={angleSolidEndY - 15} fill="blue" fontSize="20" fontWeight="normal" textAnchor="middle">B</text>
+
+        {/* 輔助小角 */}
+        {renderReflexHint()}
+
+        {/* 主要角度弧線 */}
+        <path
+          d={`M ${arcStartX} ${arcStartY} A ${arcRadius} ${arcRadius} 0 ${largeArcFlag} ${sweepFlag} ${arcEndX} ${arcEndY}`}
+          fill="none"
+          stroke={showAnswer ? "red" : (targetAngle > 180 ? "#f59e0b" : "#94a3b8")}
+          strokeWidth="4"
+          strokeDasharray={showAnswer ? "" : "6 3"}
+        />
+
+        {/* 答案數值 */}
+        {showAnswer && (
+          <g>
+            <text 
+              x={centerX + (80 * dirMult)} 
+              y={centerY - 80} 
+              fill="red" 
+              fontSize="32" 
+              fontWeight="bold"
+              textAnchor="middle"
+              className="drop-shadow-md bg-white"
+            >
+              {targetAngle}°
+            </text>
+            {targetAngle > 180 && (
+               <text 
+                x={centerX + (80 * dirMult)} 
+                y={centerY - 45} 
+                fill="#666" 
+                fontSize="16" 
+                fontWeight="normal"
+                textAnchor="middle"
+              >
+                (360° - {360 - targetAngle}°)
+              </text>
+            )}
+          </g>
+        )}
+      </g>
+    );
+  };
+
+  // 繪製量角器刻度 (放大版)
+  const renderProtractorTicks = () => {
+    const ticks = [];
+    const outerR = PROTRACTOR_RADIUS;
+    
+    for (let i = 0; i <= 180; i++) {
+      const rad = (i * Math.PI) / 180;
+      const isMajor = i % 10 === 0;
+      const isMid = i % 5 === 0;
+      
+      const length = isMajor ? 35 : (isMid ? 20 : 10);
+      const strokeWidth = isMajor ? 3 : (isMid ? 2 : 1);
+      
+      const startX = Math.cos(-rad) * outerR;
+      const startY = Math.sin(-rad) * outerR;
+      const endX = Math.cos(-rad) * (outerR - length);
+      const endY = Math.sin(-rad) * (outerR - length);
+
+      ticks.push(
+        <line
+          key={`tick-${i}`}
+          x1={startX} y1={startY}
+          x2={endX} y2={endY}
+          stroke={isMajor ? "#000" : "#444"}
+          strokeWidth={strokeWidth}
+        />
+      );
+
+      if (isMajor) {
+        // 外圈數字
+        const textR = outerR - 50; 
+        const tx = Math.cos(-rad) * textR;
+        const ty = Math.sin(-rad) * textR;
+        
+        ticks.push(
+          <text
+            key={`text-outer-${i}`}
+            x={tx} y={ty}
+            fontSize="16"
+            fontWeight="bold"
+            textAnchor="middle"
+            alignmentBaseline="middle"
+            transform={`rotate(${-i + 90}, ${tx}, ${ty})`}
+          >
+            {i}
+          </text>
+        );
+
+        // 內圈數字
+        const innerTextR = outerR - 85;
+        const txIn = Math.cos(-rad) * innerTextR;
+        const tyIn = Math.sin(-rad) * innerTextR;
+        
+         ticks.push(
+          <text
+            key={`text-inner-${i}`}
+            x={txIn} y={tyIn}
+            fontSize="14"
+            fill="#e11d48"
+            fontWeight="bold"
+            textAnchor="middle"
+            alignmentBaseline="middle"
+            transform={`rotate(${-i + 90}, ${txIn}, ${tyIn})`}
+          >
+            {180 - i}
+          </text>
+        );
+      }
+    }
+    return ticks;
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 font-sans p-2">
+      <div className="max-w-6xl w-full bg-white rounded-xl shadow-lg overflow-hidden">
+        
+        {/* 標題區 */}
+        <div className="bg-indigo-600 p-4 text-white flex justify-between items-center flex-wrap gap-2">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <Maximize className="w-6 h-6" />
+              量角器教學
+            </h1>
+            <p className="text-indigo-100 text-sm mt-1">
+              {targetAngle > 180 ? '當前為優角 (>180°)，請測量小角後用 360° 減去' : '拖曳量角器中心點至頂點 O 測量角 AOB'}
+            </p>
+          </div>
+          <div className="flex gap-2">
+             <button 
+              onClick={randomizeAngle}
+              className="flex items-center gap-1 bg-indigo-500 hover:bg-indigo-400 px-3 py-1.5 rounded transition shadow-sm border border-indigo-400"
+            >
+              <RefreshCw size={16} /> 隨機題目
+            </button>
+            <button 
+              onClick={() => setShowAnswer(!showAnswer)}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded transition shadow-sm border ${showAnswer ? 'bg-amber-500 hover:bg-amber-400 text-white border-amber-400' : 'bg-white text-indigo-600 border-white hover:bg-indigo-50'}`}
+            >
+              {showAnswer ? <EyeOff size={16} /> : <Eye size={16} />}
+              {showAnswer ? "隱藏答案" : "顯示答案"}
+            </button>
+          </div>
+        </div>
+
+        {/* 主操作區 */}
+        <div className="flex flex-col lg:flex-row">
+          
+          {/* 左側：畫布 */}
+          <div 
+            className="relative flex-grow bg-slate-100 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-hidden cursor-crosshair select-none"
+            style={{ height: '600px' }}
+            ref={svgRef}
+          >
+            <svg 
+              width="100%" 
+              height="100%" 
+              viewBox="0 0 600 600"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              {/* 背景網格 */}
+              <defs>
+                <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                  <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#e2e8f0" strokeWidth="1"/>
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#grid)" />
+
+              {/* 題目角度層 */}
+              {renderAngleLines()}
+
+              {/* 量角器層 */}
+              <g 
+                transform={`translate(${protractorPos.x}, ${protractorPos.y}) rotate(${protractorRotation})`}
+                onMouseDown={handleMouseDown}
+                onTouchStart={handleTouchStart}
+                style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+                className="transition-transform duration-75 ease-out"
+              >
+                {/* 量角器本體 */}
+                <path 
+                  d={`M -${PROTRACTOR_RADIUS} 0 A ${PROTRACTOR_RADIUS} ${PROTRACTOR_RADIUS} 0 0 1 ${PROTRACTOR_RADIUS} 0 Z`} 
+                  fill="rgba(255, 255, 255, 0.7)" 
+                  stroke="#333" 
+                  strokeWidth="3"
+                  className="drop-shadow-xl"
+                />
+                
+                {/* 底部直尺 */}
+                <rect x={-PROTRACTOR_RADIUS} y="0" width={PROTRACTOR_RADIUS * 2} height="30" fill="rgba(255, 255, 255, 0.6)" stroke="#333" strokeWidth="1" />
+
+                {/* 中心十字線 */}
+                <line x1="-20" y1="0" x2="20" y2="0" stroke="red" strokeWidth="3" />
+                <line x1="0" y1="-20" x2="0" y2="20" stroke="red" strokeWidth="3" />
+                <circle cx="0" cy="0" r="6" fill="transparent" stroke="red" strokeWidth="2" />
+
+                {/* 刻度 */}
+                {renderProtractorTicks()}
+              </g>
+
+              <text x="10" y="580" fill="#64748b" fontSize="14" fontWeight="500">
+                提示：若測量優角(大於180°)，可量剩下的角再用360°減。
+              </text>
+            </svg>
+          </div>
+
+          {/* 右側：控制面板 */}
+          <div className="w-full lg:w-80 bg-white p-6 flex flex-col gap-6 z-10 shadow-lg">
+            
+            {/* 題目設定 */}
+            <div className="space-y-4">
+              <h3 className="font-bold text-gray-700 border-b pb-2">題目設定</h3>
+              
+              {/* 開口方向切換 */}
+              <div>
+                <label className="text-sm text-gray-600 mb-2 block">開口方向</label>
+                <div className="flex bg-gray-100 p-1 rounded-lg">
+                  <button
+                    onClick={() => setAngleDirection('right')}
+                    className={`flex-1 py-1.5 text-sm font-medium rounded-md transition flex items-center justify-center gap-1 ${angleDirection === 'right' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    <ArrowLeftRight size={14} className={angleDirection === 'right' ? "" : "rotate-180"}/> 向右
+                  </button>
+                  <button
+                    onClick={() => setAngleDirection('left')}
+                    className={`flex-1 py-1.5 text-sm font-medium rounded-md transition flex items-center justify-center gap-1 ${angleDirection === 'left' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    <ArrowLeftRight size={14} className={angleDirection === 'left' ? "" : "rotate-180"}/> 向左
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm text-gray-600 mb-1 block">
+                  角度大小 (0° - 360°)
+                </label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="360" 
+                    value={targetAngle} 
+                    onChange={(e) => {
+                      setTargetAngle(Number(e.target.value));
+                      setShowAnswer(false);
+                    }}
+                    className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${targetAngle > 180 ? 'bg-amber-200 accent-amber-600' : 'bg-blue-200 accent-blue-600'}`}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 量角器控制 */}
+            <div className="space-y-3">
+              <h3 className="font-bold text-gray-700 border-b pb-2 flex items-center gap-2">
+                <Move size={16}/> 量角器微調
+              </h3>
+              
+              <div>
+                <label className="text-sm text-gray-600 mb-1 block">旋轉量角器 (360°)</label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="range" 
+                    min="-180" 
+                    max="180" 
+                    value={protractorRotation} 
+                    onChange={(e) => setProtractorRotation(Number(e.target.value))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gray-600"
+                  />
+                  <span className="text-gray-600 font-mono w-12 text-right text-xs">{protractorRotation}°</span>
+                </div>
+              </div>
+
+              <button 
+                onClick={resetProtractor}
+                className="w-full mt-2 py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-sm transition"
+              >
+                重置量角器位置
+              </button>
+            </div>
+
+            {/* 教學步驟 */}
+            <div className={`p-4 rounded-lg border flex-grow ${targetAngle > 180 ? 'bg-amber-50 border-amber-100' : 'bg-blue-50 border-blue-100'}`}>
+              <h3 className={`font-bold mb-2 flex items-center gap-2 ${targetAngle > 180 ? 'text-amber-800' : 'text-blue-800'}`}>
+                <Info size={16}/> 
+                {targetAngle > 180 ? '優角測量技巧' : '基本測量技巧'}
+              </h3>
+              
+              {targetAngle > 180 ? (
+                <ul className="text-sm text-amber-900 space-y-2 list-disc list-inside">
+                  <li>
+                    <span className="font-semibold">量小角：</span>
+                    量角器無法直接量超過180度。請先測量剩下的那個<span className="font-bold border-b border-amber-500">灰色虛線小角</span>。
+                  </li>
+                  <li>
+                    <span className="font-semibold">計算：</span>
+                    用 <span className="font-mono font-bold bg-white px-1 rounded">360° - 小角</span> 得到答案。
+                  </li>
+                  <li>
+                    例如：若量出小角是 135°，那優角就是 360 - 135 = 225°。
+                  </li>
+                </ul>
+              ) : (
+                <ul className="text-sm text-blue-900 space-y-2 list-disc list-inside">
+                  <li>
+                    <span className="font-semibold">對齊頂點：</span>
+                    中心紅點對準 O 點。
+                  </li>
+                  <li>
+                    <span className="font-semibold">對齊底線：</span>
+                    0 度線對齊角的一邊。
+                  </li>
+                  <li>
+                    <span className="font-semibold">讀數：</span>
+                    查看角延長線對應的刻度。
+                  </li>
+                </ul>
+              )}
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ProtractorApp;
